@@ -202,7 +202,7 @@ class ApiVideoCaptionDeleter {
     // Step 2: Get all videos
     const videos = await this.getAllVideos();
     
-    // Step 3: Process each video with controlled concurrency
+    // Step 3: Process each video sequentially
     let totalCaptionsDeleted = 0;
     let videosWithCaptions = 0;
     
@@ -221,41 +221,26 @@ class ApiVideoCaptionDeleter {
         console.log(`${progress} 📝 Found ${captions.length} caption(s) for video ${video.videoId}`);
         videosWithCaptions++;
         
-        // For videos with many captions, process in smaller batches to avoid rate limits
-        const batchSize = captions.length > 10 ? 5 : captions.length;
-        let deletedCount = 0;
-        
-        for (let j = 0; j < captions.length; j += batchSize) {
-          const batch = captions.slice(j, j + batchSize);
-          console.log(`${progress} 🗑️  Deleting batch of ${batch.length} captions (${j + 1}-${Math.min(j + batchSize, captions.length)} of ${captions.length})...`);
+        // Delete each caption one by one to avoid rate limits
+        for (const caption of captions) {
+          const language = caption.srclang || caption.language;
+          console.log(`${progress} 🗑️  Deleting caption (${language}) for video ${video.videoId}...`);
           
-          const deletionPromises = batch.map(caption => {
-            const language = caption.srclang || caption.language;
-            return this.deleteCaption(video.videoId, language);
-          });
-          
-          try {
-            const results = await Promise.all(deletionPromises);
-            const batchSuccessCount = results.filter(success => success).length;
-            deletedCount += batchSuccessCount;
-            
-            console.log(`${progress} ✅ Successfully deleted ${batchSuccessCount}/${batch.length} captions in this batch`);
-            
-            // Wait between batches to respect rate limits
-            if (j + batchSize < captions.length) {
-              await this.smartDelay(500);
-            }
-          } catch (error) {
-            console.error(`${progress} ❌ Error during batch caption deletion:`, error.message);
+          const success = await this.deleteCaption(video.videoId, language);
+          if (success) {
+            totalCaptionsDeleted++;
+            console.log(`${progress} ✅ Successfully deleted caption (${language})`);
           }
+          
+          // Smart delay between caption deletions
+          await this.smartDelay(150);
         }
         
-        totalCaptionsDeleted += deletedCount;
-        console.log(`${progress} 🎯 Total deleted for this video: ${deletedCount}/${captions.length} captions`);
+        console.log(`${progress} 🎯 Completed video: deleted captions for ${video.videoId}`);
       }
       
       // Smart delay between videos
-      await this.smartDelay(300);
+      await this.smartDelay(200);
     }
     
     console.log("\n🎉 Caption deletion process completed!");
