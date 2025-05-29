@@ -52,7 +52,7 @@ class ApiVideoCaptionDeleter {
         }
         
         if (response.status === 429) {
-          const retryAfter = rateLimitInfo.retryAfter || Math.pow(2, attempt) * 1000; // Exponential backoff
+          const retryAfter = rateLimitInfo.retryAfter || Math.pow(2, attempt) * 100; // Reduced from 1000 to 100ms
           console.log(`🔄 Rate limited. Waiting ${retryAfter} seconds before retry (attempt ${attempt + 1}/${maxRetries + 1})...`);
           
           await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
@@ -63,7 +63,7 @@ class ApiVideoCaptionDeleter {
       } catch (error) {
         if (attempt === maxRetries) throw error;
         
-        const waitTime = Math.pow(2, attempt) * 1000;
+        const waitTime = Math.pow(2, attempt) * 100; // Reduced from 1000 to 100ms
         console.log(`🔄 Request failed. Retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries + 1})...`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
       }
