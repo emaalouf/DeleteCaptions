@@ -233,8 +233,8 @@ class ApiVideoCaptionDeleter {
           }
           
           // 10-second buffer between caption deletions to avoid rate limits
-          console.log(`${progress} ⏳ Waiting 10 seconds before next deletion...`);
-          await new Promise(resolve => setTimeout(resolve, 10000));
+          console.log(`${progress} ⏳ Waiting 1 seconds before next deletion...`);
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
         
         console.log(`${progress} 🎯 Completed video: deleted captions for ${video.videoId}`);
