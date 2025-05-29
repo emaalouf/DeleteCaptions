@@ -10,7 +10,7 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-class ApiVideoCaptionDeleter {
+class ApiVideoCaptionChecker {
   constructor() {
     this.accessToken = null;
   }
@@ -106,28 +106,8 @@ class ApiVideoCaptionDeleter {
     }
   }
 
-  async deleteCaption(videoId, language) {
-    try {
-      const response = await fetch(`${BASE_URL}/videos/${videoId}/captions/${language}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${this.accessToken}`
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(`Failed to delete caption: ${response.status} ${response.statusText}`);
-      }
-
-      return true;
-    } catch (error) {
-      console.error(`❌ Failed to delete caption (${language}) for video ${videoId}:`, error.message);
-      return false;
-    }
-  }
-
-  async deleteAllCaptions() {
-    console.log("🚀 Starting caption deletion process...");
+  async checkAllCaptions() {
+    console.log("🔍 Starting caption check process...");
     
     // Step 1: Authenticate
     await this.authenticate();
@@ -135,9 +115,10 @@ class ApiVideoCaptionDeleter {
     // Step 2: Get all videos
     const videos = await this.getAllVideos();
     
-    // Step 3: Process each video
-    let totalCaptionsDeleted = 0;
+    // Step 3: Check each video for captions
+    let totalCaptionsFound = 0;
     let videosWithCaptions = 0;
+    const videosWithCaptionsList = [];
     
     for (let i = 0; i < videos.length; i++) {
       const video = videos[i];
@@ -149,48 +130,48 @@ class ApiVideoCaptionDeleter {
       const captions = await this.getCaptionsForVideo(video.videoId);
       
       if (captions.length === 0) {
-        console.log(`${progress} ℹ️  No captions found for video ${video.videoId}`);
+        console.log(`${progress} ✅ No captions found for video ${video.videoId}`);
       } else {
         console.log(`${progress} 📝 Found ${captions.length} caption(s) for video ${video.videoId}`);
-        console.log(`${progress} 🗑️  Deleting all ${captions.length} captions concurrently...`);
         videosWithCaptions++;
+        totalCaptionsFound += captions.length;
         
-        // Delete all captions concurrently using Promise.all
-        const deletionPromises = captions.map(caption => {
-          const language = caption.srclang || caption.language;
-          return this.deleteCaption(video.videoId, language);
+        // Log the languages found
+        const languages = captions.map(caption => caption.srclang || caption.language).join(', ');
+        console.log(`${progress} 🌍 Languages: ${languages}`);
+        
+        videosWithCaptionsList.push({
+          videoId: video.videoId,
+          title: video.title,
+          captionCount: captions.length,
+          languages: languages
         });
-        
-        try {
-          const results = await Promise.all(deletionPromises);
-          const successCount = results.filter(success => success).length;
-          totalCaptionsDeleted += successCount;
-          
-          console.log(`${progress} ✅ Successfully deleted ${successCount}/${captions.length} captions`);
-          
-          if (successCount < captions.length) {
-            console.log(`${progress} ⚠️  ${captions.length - successCount} caption deletions failed`);
-          }
-        } catch (error) {
-          console.error(`${progress} ❌ Error during concurrent caption deletion:`, error.message);
-        }
       }
       
-      // Small delay between videos to be respectful to the API
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Small delay between videos
+      await new Promise(resolve => setTimeout(resolve, 50));
     }
     
-    console.log("\n🎉 Caption deletion process completed!");
-    console.log(`📊 Summary:`);
+    console.log("\n📊 Caption Check Summary:");
     console.log(`   • Total videos processed: ${videos.length}`);
     console.log(`   • Videos with captions: ${videosWithCaptions}`);
-    console.log(`   • Total captions deleted: ${totalCaptionsDeleted}`);
+    console.log(`   • Total captions found: ${totalCaptionsFound}`);
+    
+    if (videosWithCaptions > 0) {
+      console.log("\n📋 Videos that still have captions:");
+      videosWithCaptionsList.forEach((video, index) => {
+        console.log(`   ${index + 1}. ${video.videoId} (${video.title})`);
+        console.log(`      └── ${video.captionCount} captions: ${video.languages}`);
+      });
+    } else {
+      console.log("\n🎉 No captions found! All captions have been successfully deleted.");
+    }
   }
 }
 
-// Run the script
-const deleter = new ApiVideoCaptionDeleter();
-deleter.deleteAllCaptions().catch(error => {
+// Run the checker
+const checker = new ApiVideoCaptionChecker();
+checker.checkAllCaptions().catch(error => {
   console.error("💥 Fatal error:", error);
   process.exit(1);
 }); 
