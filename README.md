@@ -1,6 +1,6 @@
 # API.Video Caption Deleter
 
-This Node.js project provides scripts to manage captions on your api.video account.
+This Node.js project provides scripts to manage captions on your api.video account with intelligent rate limiting.
 
 ## Scripts
 
@@ -11,9 +11,11 @@ This Node.js project provides scripts to manage captions on your api.video accou
 
 - ✅ Authenticates with api.video using your API key
 - ✅ Fetches all videos with automatic pagination handling
-- ✅ **Concurrent caption deletion** - Deletes all captions for each video simultaneously for maximum speed
+- ✅ **Smart batch processing** - Processes captions in batches to respect rate limits
+- ✅ **Automatic retry logic** - Handles 429 rate limit errors with exponential backoff
+- ✅ **Rate limit monitoring** - Tracks and responds to API rate limit headers
 - ✅ Detailed progress logging and summary reports
-- ✅ Error handling and rate limiting
+- ✅ Error handling and graceful degradation
 - ✅ Uses environment variables for secure API key storage
 - ✅ Read-only caption checker for verification
 
@@ -38,7 +40,7 @@ This Node.js project provides scripts to manage captions on your api.video accou
 
 ## Usage
 
-### Delete All Captions (Fast & Concurrent)
+### Delete All Captions (Smart Rate-Limited)
 **⚠️ WARNING: This is irreversible!**
 ```bash
 npm start
@@ -55,13 +57,22 @@ node index.js        # Delete all captions
 node check-captions.js   # Check for remaining captions
 ```
 
-## Performance Improvements
+## Rate Limiting & Performance
 
-The deletion script now uses **concurrent processing** for maximum speed:
-- **Before**: Deleted captions one by one (22 captions × 200ms delay = ~4.4 seconds per video)
-- **After**: Deletes all captions for a video simultaneously (~1 second per video)
+The scripts now include **intelligent rate limiting** to prevent 429 errors:
 
-For a video with 22 captions, this is **4x faster**! 🚀
+### Automatic Rate Limit Handling
+- **Header monitoring**: Tracks `X-RateLimit-Remaining` and `X-RateLimit-Retry-After`
+- **Smart delays**: Increases wait times when approaching rate limits
+- **Automatic retry**: Retries failed requests with exponential backoff
+- **Batch processing**: Processes large caption sets in smaller batches
+
+### Processing Strategy
+- **Videos with ≤10 captions**: Process all concurrently
+- **Videos with >10 captions**: Process in batches of 5 with delays
+- **Between videos**: Smart delays based on remaining rate limit
+
+This approach balances speed with API compliance, ensuring your requests succeed without hitting rate limits.
 
 ## What the scripts do
 
@@ -69,7 +80,7 @@ For a video with 22 captions, this is **4x faster**! 🚀
 1. **Environment Setup**: Loads API key from environment variables
 2. **Authentication**: Gets access token from api.video
 3. **Video Fetching**: Retrieves all videos (handles pagination automatically)
-4. **Concurrent Caption Deletion**: For each video, deletes ALL captions simultaneously
+4. **Smart Caption Deletion**: Processes captions in rate-limit-aware batches
 5. **Summary**: Provides detailed report of deletions
 
 ### Caption Checker (`check-captions.js`)
@@ -80,7 +91,7 @@ For a video with 22 captions, this is **4x faster**! 🚀
 
 ## Example Output
 
-### Deletion Script (Concurrent)
+### Deletion Script (Rate-Limited Batches)
 ```
 🚀 Starting caption deletion process...
 ✅ Authentication successful!
@@ -88,14 +99,28 @@ For a video with 22 captions, this is **4x faster**! 🚀
 ✅ Successfully fetched all 511 videos!
 [56/511] 🔍 Checking captions for video: vi4ZqPnMPidp9mPCVxxlmIq0 (Heal From Rejection-2.mp4)
 [56/511] 📝 Found 22 caption(s) for video vi4ZqPnMPidp9mPCVxxlmIq0
-[56/511] 🗑️  Deleting all 22 captions concurrently...
-[56/511] ✅ Successfully deleted 22/22 captions
+[56/511] 🗑️  Deleting batch of 5 captions (1-5 of 22)...
+[56/511] ✅ Successfully deleted 5/5 captions in this batch
+[56/511] 🗑️  Deleting batch of 5 captions (6-10 of 22)...
+[56/511] ✅ Successfully deleted 5/5 captions in this batch
+[56/511] 🗑️  Deleting batch of 5 captions (11-15 of 22)...
+⚠️  Rate limit warning: 8/100 requests remaining
+⏳ Low rate limit remaining (8). Waiting 1500ms...
+[56/511] ✅ Successfully deleted 5/5 captions in this batch
+[56/511] 🎯 Total deleted for this video: 22/22 captions
 ...
 🎉 Caption deletion process completed!
 📊 Summary:
    • Total videos processed: 511
    • Videos with captions: 127
    • Total captions deleted: 2,840
+```
+
+### Rate Limit Error Handling
+```
+🔄 Rate limited. Waiting 60 seconds before retry (attempt 1/4)...
+⚠️  Rate limit warning: 2/100 requests remaining
+⏳ Low rate limit remaining (2). Waiting 900ms...
 ```
 
 ### Checker Script
@@ -121,7 +146,9 @@ For a video with 22 captions, this is **4x faster**! 🚀
 ## Safety Features
 
 - **Environment Variables**: API key stored securely in .env file
-- **Concurrent Processing**: Maximum speed with API rate limiting
+- **Smart Rate Limiting**: Automatic handling of API limits with intelligent delays
+- **Batch Processing**: Controlled concurrency to prevent overwhelming the API
+- **Retry Logic**: Automatic retries with exponential backoff for failed requests
 - **Error Handling**: Continues processing even if individual operations fail
 - **Progress Tracking**: Detailed progress for long-running operations
 - **Read-only Checker**: Verify results without risk of accidental deletion
@@ -131,6 +158,14 @@ For a video with 22 captions, this is **4x faster**! 🚀
 ⚠️ **Caption deletion is irreversible!** Use the checker script first to see what will be deleted.
 
 The deletion script processes all videos and deletes ALL captions found. There's no undo functionality.
+
+## Troubleshooting Rate Limits
+
+If you still encounter rate limit issues:
+1. **Check your plan**: Some api.video plans have lower rate limits
+2. **Run during off-peak hours**: API limits may be more generous
+3. **Use the checker first**: Verify which videos actually have captions
+4. **Contact api.video**: Request higher rate limits if needed
 
 ## Security
 

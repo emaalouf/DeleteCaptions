@@ -13,13 +13,80 @@ if (!API_KEY) {
 class ApiVideoCaptionChecker {
   constructor() {
     this.accessToken = null;
+    this.rateLimitInfo = {
+      limit: null,
+      remaining: null,
+      resetTime: null
+    };
+  }
+
+  // Helper method to parse rate limit headers
+  parseRateLimitHeaders(response) {
+    const limit = response.headers.get('X-RateLimit-Limit');
+    const remaining = response.headers.get('X-RateLimit-Remaining');
+    const retryAfter = response.headers.get('X-RateLimit-Retry-After');
+    
+    if (limit) this.rateLimitInfo.limit = parseInt(limit);
+    if (remaining) this.rateLimitInfo.remaining = parseInt(remaining);
+    if (retryAfter) this.rateLimitInfo.resetTime = Date.now() + (parseInt(retryAfter) * 1000);
+    
+    return {
+      limit: this.rateLimitInfo.limit,
+      remaining: this.rateLimitInfo.remaining,
+      retryAfter: retryAfter ? parseInt(retryAfter) : null
+    };
+  }
+
+  // Enhanced fetch with rate limiting and retry logic
+  async fetchWithRetry(url, options = {}, maxRetries = 3) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await fetch(url, options);
+        
+        // Parse rate limit headers
+        const rateLimitInfo = this.parseRateLimitHeaders(response);
+        
+        // Log rate limit info occasionally
+        if (rateLimitInfo.remaining !== null && rateLimitInfo.remaining < 10) {
+          console.log(`⚠️  Rate limit warning: ${rateLimitInfo.remaining}/${rateLimitInfo.limit} requests remaining`);
+        }
+        
+        if (response.status === 429) {
+          const retryAfter = rateLimitInfo.retryAfter || Math.pow(2, attempt) * 1000; // Exponential backoff
+          console.log(`🔄 Rate limited. Waiting ${retryAfter} seconds before retry (attempt ${attempt + 1}/${maxRetries + 1})...`);
+          
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+          continue;
+        }
+        
+        return response;
+      } catch (error) {
+        if (attempt === maxRetries) throw error;
+        
+        const waitTime = Math.pow(2, attempt) * 1000;
+        console.log(`🔄 Request failed. Retrying in ${waitTime}ms (attempt ${attempt + 1}/${maxRetries + 1})...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+  }
+
+  // Smart delay based on rate limit status
+  async smartDelay(baseDelay = 100) {
+    // If we're close to rate limit, wait longer
+    if (this.rateLimitInfo.remaining !== null && this.rateLimitInfo.remaining < 5) {
+      const delay = baseDelay * 3;
+      console.log(`⏳ Low rate limit remaining (${this.rateLimitInfo.remaining}). Waiting ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    } else {
+      await new Promise(resolve => setTimeout(resolve, baseDelay));
+    }
   }
 
   async authenticate() {
     console.log("🔐 Authenticating with api.video...");
     
     try {
-      const response = await fetch(`${BASE_URL}/auth/api-key`, {
+      const response = await this.fetchWithRetry(`${BASE_URL}/auth/api-key`, {
         method: 'POST',
         headers: {
           'accept': 'application/json',
@@ -53,7 +120,7 @@ class ApiVideoCaptionChecker {
       do {
         console.log(`📄 Fetching page ${currentPage} of ${totalPages}...`);
         
-        const response = await fetch(`${BASE_URL}/videos?currentPage=${currentPage}&pageSize=25`, {
+        const response = await this.fetchWithRetry(`${BASE_URL}/videos?currentPage=${currentPage}&pageSize=25`, {
           headers: {
             'Authorization': `Bearer ${this.accessToken}`
           }
@@ -70,8 +137,8 @@ class ApiVideoCaptionChecker {
         
         console.log(`📋 Found ${data.data.length} videos on this page (${allVideos.length} total so far)`);
         
-        // Small delay to be nice to the API
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Smart delay based on rate limits
+        await this.smartDelay(150);
         
       } while (currentPage <= totalPages);
 
@@ -85,7 +152,7 @@ class ApiVideoCaptionChecker {
 
   async getCaptionsForVideo(videoId) {
     try {
-      const response = await fetch(`${BASE_URL}/videos/${videoId}/captions`, {
+      const response = await this.fetchWithRetry(`${BASE_URL}/videos/${videoId}/captions`, {
         headers: {
           'Authorization': `Bearer ${this.accessToken}`
         }
@@ -148,8 +215,8 @@ class ApiVideoCaptionChecker {
         });
       }
       
-      // Small delay between videos
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Smart delay between videos
+      await this.smartDelay(75);
     }
     
     console.log("\n📊 Caption Check Summary:");
